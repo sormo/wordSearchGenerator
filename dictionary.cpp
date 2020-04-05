@@ -17,6 +17,9 @@ namespace Dictionary
             std::string word;
             file >> word;
 
+            if (word.size() >= result.size())
+                continue;
+
             result[word.size()].push_back(word);
         }
 

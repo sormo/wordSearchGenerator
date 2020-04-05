@@ -10,6 +10,8 @@ namespace WordSearch
     // reason is that we want to pick direction uniformly at random
     using ProcessedCandidates = std::array<Candidates, (size_t)Direction::COUNT>;
 
+    using Rand = std::uniform_int_distribution<size_t>;
+
     std::random_device g_rd;
     std::mt19937 g_mt(g_rd());
 
@@ -447,32 +449,14 @@ namespace WordSearch
         return true;
     }
 
-    std::tuple<Board, Words> PositionWords(Dictionary::Data& data, size_t boardRows, size_t boardCols, size_t wordCount, size_t wordSizeFrom, size_t wordSizeTo)
+    bool PositionWordRandom(Dictionary::Data& data, Board& board, Words& words, ProcessedCandidates& candidates, Rand randWordSize, Rand randDir, const Candidates& checkCandidates)
     {
-        std::uniform_int_distribution<size_t> randDirection(0, (size_t)Direction::COUNT - 1);
-        std::uniform_int_distribution<size_t> randWordSize(wordSizeFrom, std::min(std::max(boardRows, boardCols), wordSizeTo));
-        ProcessedCandidates candidates = ProcessCandidates(GetCandidates(boardRows, boardCols));
-        Candidates checkCandidates = GetCandidates(boardRows, boardCols);
-
-        Board board(boardRows, std::vector<uint8_t>(boardCols, 0));
-        Words words;
-
         size_t safetyCounter = 0;
-        auto resetProgress = [&]()
-        {
-            safetyCounter = 0;
-            words.clear();
-            board = Board(boardRows, std::vector<uint8_t>(boardCols, 0));
-            candidates = ProcessCandidates(GetCandidates(boardRows, boardCols));
-        };
 
-        while (words.size() != wordCount)
+        while (safetyCounter < SAFETY_COUNT)
         {
-            if (safetyCounter == SAFETY_COUNT)
-                resetProgress();
-
+            auto direction = randDir(g_mt);
             auto word = Dictionary::GetRandomWord(data, randWordSize(g_mt));
-            auto direction = randDirection(g_mt);
 
             if (std::find(std::begin(words), std::end(words), *word) != std::end(words))
                 continue;
@@ -485,18 +469,42 @@ namespace WordSearch
                         continue;
 
                     ApplyWord(board, *it, *word);
-
                     RemoveInterceptingCandidates(*it, word->size(), candidates);
-
                     words.push_back(std::move(*word));
 
-                    safetyCounter = 0;
-
-                    break;
+                    return true;
                 }
             }
 
             safetyCounter++;
+        }
+
+        return false;
+    }
+
+    std::tuple<Board, Words> PositionWords(Dictionary::Data& data, size_t boardRows, size_t boardCols, size_t wordSizeFrom, size_t wordSizeTo)
+    {
+        Rand randDirStraight(0, (size_t)Direction::Right);
+        Rand randDirDiagonal((size_t)Direction::UpLeft, (size_t)Direction::DownRight);
+        Rand randWordSize(wordSizeFrom, std::min(std::max(boardRows, boardCols), wordSizeTo));
+
+        ProcessedCandidates candidates = ProcessCandidates(GetCandidates(boardRows, boardCols));
+        Candidates checkCandidates = GetCandidates(boardRows, boardCols);
+
+        Board board(boardRows, std::vector<uint8_t>(boardCols, 0));
+        Words words;
+
+        size_t totalCells = boardRows * boardCols;
+        size_t freeCells = totalCells;
+        // First is positioned with diagonal words.
+        Rand currentRandDir = randDirDiagonal;
+
+        while (PositionWordRandom(data, board, words, candidates, randWordSize, currentRandDir, checkCandidates))
+        {
+            freeCells = GetFreeCellsCount(board);
+
+            if (freeCells < totalCells / 2)
+                currentRandDir = randDirStraight;
         }
 
         return { board, words };
@@ -586,7 +594,7 @@ namespace WordSearch
 
     void FillFreeCellsRandom(Board& board, const Words& words)
     {
-        std::uniform_int_distribution<size_t> randChar(97, 122);
+        Rand randChar(97, 122);
         auto candidates = GetCandidates(board.size(), board[0].size());
 
         for (size_t r = 0; r < board.size(); ++r)
