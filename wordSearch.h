@@ -15,12 +15,11 @@ namespace WordSearch
     void PrintBoard(const Board& board);
 
     size_t GetFreeCellsCount(const Board& board);
-    void FillFreeCells(Board& board, const std::string& message);
-    void FillFreeCellsRandom(Board& board);
+    void FillFreeCellsRandom(Board& board, const Words& words);
 
-    //
+    // detail
 
-    // !!! this is here only because of testing )):
+    // !!! this is here only because of test ):
     enum class Direction
     {
         Up = 0,
@@ -42,4 +41,5 @@ namespace WordSearch
 
         Direction dir;
     };
+    using Candidates = std::array<std::vector<Candidate>, Dictionary::MAX_WORD_SIZE>;
 }

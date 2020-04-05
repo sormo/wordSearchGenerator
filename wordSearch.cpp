@@ -6,7 +6,6 @@
 
 namespace WordSearch
 {
-    using Candidates = std::array<std::vector<Candidate>, Dictionary::MAX_WORD_SIZE>;
     // we process candidates to form data[direction][wordSize]
     // reason is that we want to pick direction uniformly at random
     using ProcessedCandidates = std::array<Candidates, (size_t)Direction::COUNT>;
@@ -68,8 +67,8 @@ namespace WordSearch
     using CharFunctionPrototype = bool(Board&, int row, int col, char character);
 
     // Call function for each row, col and char from word.
-    template<class T>
-    bool ApplyCharFunction(Board& board, const Candidate& position, const std::string& word, T function)
+    template<class T, class BOARD>
+    bool ApplyCharFunction(BOARD& board, const Candidate& position, const std::string& word, T function)
     {
         if (position.dir == Direction::Up)
         {
@@ -140,9 +139,9 @@ namespace WordSearch
     }
 
     // Verify if it's possible to place word on position in board.
-    bool VerifyWord(Board& board, const Candidate& position, const std::string& word)
+    bool VerifyWord(const Board& board, const Candidate& position, const std::string& word)
     {
-        return ApplyCharFunction(board, position, word, [](Board& board, int row, int col, char character)
+        return ApplyCharFunction(board, position, word, [](const Board& board, int row, int col, char character)
             {
                 return board[row][col] == 0 || board[row][col] == character;
             });
@@ -160,11 +159,11 @@ namespace WordSearch
     }
 
     // Count number of empty cells word will take on position in board.
-    size_t CountEmptyCells(Board& board, const Candidate& position, const std::string& word)
+    size_t CountEmptyCells(const Board& board, const Candidate& position, const std::string& word)
     {
         size_t count = 0;
 
-        ApplyCharFunction(board, position, word, [&count](Board& board, int row, int col, char character)
+        ApplyCharFunction(board, position, word, [&count](const Board& board, int row, int col, char character)
             {
                 count += board[row][col] == 0 ? 1 : 0;
 
@@ -175,11 +174,11 @@ namespace WordSearch
     }
 
     // Check if word is present on position in board.
-    bool CheckWord(Board& board, const Candidate& position, const std::string& word)
+    bool CheckWord(const Board& board, const Candidate& position, const std::string& word)
     {
         bool result = true;
 
-        ApplyCharFunction(board, position, word, [&result](Board& board, int row, int col, char character)
+        ApplyCharFunction(board, position, word, [&result](const Board& board, int row, int col, char character)
             {
                 result = board[row][col] == character;
 
@@ -378,11 +377,41 @@ namespace WordSearch
         removeItercepting((size_t)GetOpositeDirection(candidate.dir));
     }
 
+    bool IsAnyWordDuplicated(const Board& board, const Words& words, const Candidates& candidates)
+    {
+        for (const auto& word : words)
+        {
+            size_t count = 0;
+
+            for (const auto& candidate : candidates[word.size()])
+            {
+                if (CheckWord(board, candidate, word))
+                    count++;
+
+                if (count > 1)
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    bool VerifyDuplication(const Board& board, const Words& words, const Candidate& position, const std::string& newWord, const Candidates& candidates)
+    {
+        Board tempBoard(board);
+        ApplyWord(tempBoard, position, newWord);
+        if (IsAnyWordDuplicated(tempBoard, words, candidates) || IsAnyWordDuplicated(tempBoard, { newWord }, candidates))
+            return false;
+
+        return true;
+    }
+
     std::tuple<Board, Words> PositionWords(Dictionary::Data& data, size_t boardRows, size_t boardCols, size_t wordCount, size_t wordSizeFrom, size_t wordSizeTo)
     {
         std::uniform_int_distribution<size_t> randDirection(0, (size_t)Direction::COUNT - 1);
         std::uniform_int_distribution<size_t> randWordSize(wordSizeFrom, std::min(std::max(boardRows, boardCols), wordSizeTo));
         ProcessedCandidates candidates = ProcessCandidates(GetCandidates(boardRows, boardCols));
+        Candidates checkCandidates = GetCandidates(boardRows, boardCols);
 
         Board board(boardRows, std::vector<uint8_t>(boardCols, 0));
         Words words;
@@ -411,6 +440,9 @@ namespace WordSearch
             {
                 if (VerifyWord(board, *it, *word) && CountEmptyCells(board, *it, *word) != 0)
                 {
+                    if (!VerifyDuplication(board, words, *it, *word, checkCandidates))
+                        continue;
+
                     ApplyWord(board, *it, *word);
 
                     RemoveInterceptingCandidates(*it, word->size(), candidates);
@@ -433,6 +465,7 @@ namespace WordSearch
     {
         std::uniform_int_distribution<size_t> randDirection(0, (size_t)Direction::COUNT - 1);
         ProcessedCandidates candidates = ProcessCandidates(GetCandidates(boardRows, boardCols));
+        Candidates checkCandidates = GetCandidates(boardRows, boardCols);
         std::array<Direction, (size_t)Direction::COUNT> dirs
         {
             Direction::Up, Direction::Down, Direction::Left, Direction::Right, Direction::UpLeft, Direction::UpRight, Direction::DownLeft, Direction::DownRight
@@ -452,6 +485,9 @@ namespace WordSearch
                 {
                     if (VerifyWord(board, *it, *itWord) && CountEmptyCells(board, *it, *itWord) != 0)
                     {
+                        if (!VerifyDuplication(board, words, *it, *itWord, checkCandidates))
+                            continue;
+
                         ApplyWord(board, *it, *itWord);
 
                         RemoveInterceptingCandidates(*it, itWord->size(), candidates);
@@ -485,19 +521,22 @@ namespace WordSearch
         return res;
     }
 
-    void FillFreeCells(Board& board, const std::string& message)
-    {
-        size_t messageIndex = 0;
-        for (size_t r = 0; r < board.size(); ++r)
-            for (size_t c = 0; c < board[r].size(); ++c)
-                board[r][c] = board[r][c] == 0 ? message[messageIndex++] : board[r][c];
-    }
-
-    void FillFreeCellsRandom(Board& board)
+    void FillFreeCellsRandom(Board& board, const Words& words)
     {
         std::uniform_int_distribution<size_t> randChar(97, 122);
+        auto candidates = GetCandidates(board.size(), board[0].size());
+
         for (size_t r = 0; r < board.size(); ++r)
+        {
             for (size_t c = 0; c < board[r].size(); ++c)
-                board[r][c] = board[r][c] == 0 ? (uint8_t)randChar(g_mt) : board[r][c];
+            {
+                if (board[r][c] != 0)
+                    continue;
+
+                board[r][c] = (uint8_t)randChar(g_mt);
+                while(IsAnyWordDuplicated(board, words, candidates))
+                    board[r][c] = (uint8_t)randChar(g_mt);
+            }
+        }
     }
 }

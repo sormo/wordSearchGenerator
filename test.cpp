@@ -9,10 +9,13 @@ namespace WordSearch
     std::optional<int> GetDirectedLineDistance(const Candidate& candidate, int row, int col);
     bool IsInterceptingCandidate(const Candidate& candidate1, size_t size1, const Candidate& candidate2, size_t size2);
 
-    bool VerifyWord(Board& board, const Candidate& position, const std::string& word);
+    bool VerifyWord(const Board& board, const Candidate& position, const std::string& word);
     void ApplyWord(Board& board, const Candidate& position, const std::string& word);
-    size_t CountEmptyCells(Board& board, const Candidate& position, const std::string& word);
-    bool CheckWord(Board& board, const Candidate& position, const std::string& word);
+    size_t CountEmptyCells(const Board& board, const Candidate& position, const std::string& word);
+    bool CheckWord(const Board& board, const Candidate& position, const std::string& word);
+    bool IsAnyWordDuplicated(const Board& board, const Words& words, const Candidates& candidates);
+
+    Candidates GetCandidates(size_t rows, size_t cols);
 }
 
 namespace Test
@@ -146,6 +149,7 @@ namespace Test
         //
 
         WordSearch::Board board(10, std::vector<uint8_t>(10, 0));
+        WordSearch::Candidates candidates = WordSearch::GetCandidates(10, 10);
 
         ASSERT(WordSearch::VerifyWord(board, { 3, 4, WordSearch::Direction::DownRight }, "test"), true);
         ASSERT(WordSearch::CountEmptyCells(board, { 3, 4, WordSearch::Direction::DownRight }, "test"), 4);
@@ -154,5 +158,19 @@ namespace Test
         ASSERT(WordSearch::CountEmptyCells(board, { 3, 4, WordSearch::Direction::Down }, "test"), 3);
         ASSERT(WordSearch::CheckWord(board, { 3, 4, WordSearch::Direction::DownRight }, "test"), true);
         ASSERT(WordSearch::CheckWord(board, { 3, 4, WordSearch::Direction::Down }, "test"), false);
+
+        ASSERT(WordSearch::VerifyWord(board, { 4, 5, WordSearch::Direction::Down }, "test"), false);
+
+        ASSERT(WordSearch::VerifyWord(board, { 3, 5, WordSearch::Direction::Down }, "test"), true);
+        ASSERT(WordSearch::CountEmptyCells(board, { 3, 4, WordSearch::Direction::Down }, "test"), 3);
+        WordSearch::ApplyWord(board, { 3, 4, WordSearch::Direction::Down }, "test");
+        ASSERT(WordSearch::CountEmptyCells(board, { 3, 4, WordSearch::Direction::Down }, "test"), 0);
+
+        ASSERT(WordSearch::VerifyWord(board, { 5, 7, WordSearch::Direction::Down }, "strom"), true);
+        WordSearch::ApplyWord(board, { 5, 7, WordSearch::Direction::Down }, "strom");
+        ASSERT(WordSearch::CheckWord(board, { 5, 7, WordSearch::Direction::Down }, "strom"), true);
+
+        ASSERT(WordSearch::IsAnyWordDuplicated(board, { "test" }, candidates), true);
+        ASSERT(WordSearch::IsAnyWordDuplicated(board, { "strom" }, candidates), false);
     }
 }

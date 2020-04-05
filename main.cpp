@@ -15,7 +15,11 @@ int main()
     for (const auto& word : words1)
         std::cout << word << "\n";
 
-    auto [board2, words2] = WordSearch::PositionWords(data, 15, 20, 40, 4);
+    auto [board2, words2] = WordSearch::PositionWords(data, 15, 20, 45, 4);
+    std::cout << "Free cells: " << WordSearch::GetFreeCellsCount(board2) << "\n";
+    WordSearch::PrintBoard(board2);
+
+    WordSearch::FillFreeCellsRandom(board2, words2);
 
     WordSearch::PrintBoard(board2);
     for (const auto& word : words2)
