@@ -158,6 +158,47 @@ namespace WordSearch
             });
     }
 
+    using ApplyIndices = std::vector<size_t>;
+    ApplyIndices ApplyWordIndices(Board& board, const Candidate& position, const std::string& word)
+    {
+        ApplyIndices res;
+        size_t index = 0;
+
+        ApplyCharFunction(board, position, word, [&index, &res](Board& board, int row, int col, char character)
+            {
+                if (board[row][col] == 0)
+                {
+                    board[row][col] = character;
+                    res.push_back(index);
+                }
+
+                index++;
+
+                return true;
+            });
+
+        return res;
+    }
+
+    void UnapplyWordIndices(Board& board, const Candidate& position, const std::string& word, const ApplyIndices& indices)
+    {
+        size_t index = 0;
+        size_t indicesIndex = 0;
+
+        ApplyCharFunction(board, position, word, [&index, &indicesIndex, &indices](Board& board, int row, int col, char character)
+            {
+                if (indicesIndex < indices.size() && index == indices[indicesIndex])
+                {
+                    board[row][col] = 0;
+                    indicesIndex++;
+                }
+
+                index++;
+
+                return true;
+            });
+    }
+
     // Count number of empty cells word will take on position in board.
     size_t CountEmptyCells(const Board& board, const Candidate& position, const std::string& word)
     {
@@ -461,54 +502,76 @@ namespace WordSearch
         return { board, words };
     }
 
-    Board PositionWords(size_t boardRows, size_t boardCols, std::vector<std::string>& words)
+    std::array<Direction, (size_t)Direction::COUNT> GetShuffledDirections()
     {
-        std::uniform_int_distribution<size_t> randDirection(0, (size_t)Direction::COUNT - 1);
-        ProcessedCandidates candidates = ProcessCandidates(GetCandidates(boardRows, boardCols));
-        Candidates checkCandidates = GetCandidates(boardRows, boardCols);
         std::array<Direction, (size_t)Direction::COUNT> dirs
         {
             Direction::Up, Direction::Down, Direction::Left, Direction::Right, Direction::UpLeft, Direction::UpRight, Direction::DownLeft, Direction::DownRight
         };
+        std::shuffle(std::begin(dirs), std::end(dirs), g_mt);
 
-        Board board( boardRows, std::vector<uint8_t>( boardCols, 0 ) );
+        return dirs;
+    }
 
-        for (auto itWord = std::begin(words); itWord != std::end(words);)
+    void CopyCandidates(const ProcessedCandidates& from, ProcessedCandidates& to)
+    {
+        for (size_t dir = 0; dir < from.size(); ++dir)
         {
-            std::shuffle(std::begin(dirs), std::end(dirs), g_mt);
-
-            bool wordPlaced = false;
-
-            for (auto dir : dirs)
+            for (size_t size = 0; size < from[dir].size(); ++size)
             {
-                for (auto it = std::begin(candidates[(size_t)dir][itWord->size()]); it != std::end(candidates[(size_t)dir][itWord->size()]); it++)
-                {
-                    if (VerifyWord(board, *it, *itWord) && CountEmptyCells(board, *it, *itWord) != 0)
-                    {
-                        if (!VerifyDuplication(board, words, *it, *itWord, checkCandidates))
-                            continue;
+                if (to[dir][size].size() == from[dir][size].size())
+                    continue;
 
-                        ApplyWord(board, *it, *itWord);
-
-                        RemoveInterceptingCandidates(*it, itWord->size(), candidates);
-
-                        wordPlaced = true;
-
-                        break;
-                    }
-                }
-
-                if (wordPlaced)
-                    break;
+                to[dir][size].resize(from[dir][size].size());
+                for (size_t i = 0; i < from[dir][size].size(); ++i)
+                    to[dir][size][i] = from[dir][size][i];
             }
+        }
+    }
 
-            if (!wordPlaced)
-                itWord = words.erase(itWord);
-            else
-                itWord++;
+    bool PositionWordsBacktrack(Board& board, const Words& words, size_t wordIndex, const ProcessedCandidates& candidates, const Candidates& checkCandidates)
+    {
+        if (words.size() == wordIndex)
+            return true;
+
+        ProcessedCandidates tempCandidates = candidates;
+
+        for (auto dir : GetShuffledDirections())
+        {
+            for (auto it = std::begin(candidates[(size_t)dir][words[wordIndex].size()]); it != std::end(candidates[(size_t)dir][words[wordIndex].size()]); it++)
+            {
+                if (VerifyWord(board, *it, words[wordIndex]) && CountEmptyCells(board, *it, words[wordIndex]) != 0)
+                {
+                    // This takes long time, temporarily disabled
+                    //if (!VerifyDuplication(board, words, *it, word, checkCandidates))
+                    //    continue;
+
+                    auto applyIndices = ApplyWordIndices(board, *it, words[wordIndex]);
+
+                    CopyCandidates(candidates, tempCandidates);
+                    RemoveInterceptingCandidates(*it, words[wordIndex].size(), tempCandidates);
+
+                    if (auto resBoard = PositionWordsBacktrack(board, words, wordIndex + 1, tempCandidates, checkCandidates))
+                        return resBoard;
+
+                    UnapplyWordIndices(board, *it, words[wordIndex], applyIndices);
+                }
+            }
         }
 
-        return board;
+        return false;
+    }
+
+    std::optional<Board> PositionWords(size_t boardRows, size_t boardCols, const Words& words)
+    {
+        ProcessedCandidates candidates = ProcessCandidates(GetCandidates(boardRows, boardCols));
+        Candidates checkCandidates = GetCandidates(boardRows, boardCols);
+        Board board(boardRows, std::vector<uint8_t>(boardCols, 0));
+
+        if (PositionWordsBacktrack(board, words, 0, candidates, checkCandidates))
+            return board;
+
+        return std::nullopt;
     }
 
     size_t GetFreeCellsCount(const Board& board)
