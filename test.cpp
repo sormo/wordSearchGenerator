@@ -8,6 +8,11 @@ namespace WordSearch
     bool IsOnLine(const Candidate& candidate, int row, int col);
     std::optional<int> GetDirectedLineDistance(const Candidate& candidate, int row, int col);
     bool IsInterceptingCandidate(const Candidate& candidate1, size_t size1, const Candidate& candidate2, size_t size2);
+
+    bool VerifyWord(Board& board, const Candidate& position, const std::string& word);
+    void ApplyWord(Board& board, const Candidate& position, const std::string& word);
+    size_t CountEmptyCells(Board& board, const Candidate& position, const std::string& word);
+    bool CheckWord(Board& board, const Candidate& position, const std::string& word);
 }
 
 namespace Test
@@ -137,5 +142,17 @@ namespace Test
         ASSERT(WordSearch::IsInterceptingCandidate({ 3, 4, WordSearch::Direction::DownRight }, 4, { 5, 6, WordSearch::Direction::DownRight }, 2), true);
         ASSERT(WordSearch::IsInterceptingCandidate({ 3, 4, WordSearch::Direction::UpLeft }, 3, { 1, 2, WordSearch::Direction::UpLeft }, 2), true);
         ASSERT(WordSearch::IsInterceptingCandidate({ 3, 4, WordSearch::Direction::DownLeft }, 4, { 4, 3, WordSearch::Direction::UpRight }, 2), true);
+
+        //
+
+        WordSearch::Board board(10, std::vector<uint8_t>(10, 0));
+
+        ASSERT(WordSearch::VerifyWord(board, { 3, 4, WordSearch::Direction::DownRight }, "test"), true);
+        ASSERT(WordSearch::CountEmptyCells(board, { 3, 4, WordSearch::Direction::DownRight }, "test"), 4);
+        WordSearch::ApplyWord(board, { 3, 4, WordSearch::Direction::DownRight }, "test");
+        ASSERT(WordSearch::CountEmptyCells(board, { 3, 4, WordSearch::Direction::DownRight }, "test"), 0);
+        ASSERT(WordSearch::CountEmptyCells(board, { 3, 4, WordSearch::Direction::Down }, "test"), 3);
+        ASSERT(WordSearch::CheckWord(board, { 3, 4, WordSearch::Direction::DownRight }, "test"), true);
+        ASSERT(WordSearch::CheckWord(board, { 3, 4, WordSearch::Direction::Down }, "test"), false);
     }
 }

@@ -14,6 +14,8 @@ namespace WordSearch
     std::random_device g_rd;
     std::mt19937 g_mt(g_rd());
 
+    static constexpr size_t SAFETY_COUNT = 2000;
+
     std::vector<Candidate> GenerateCandidates(int boardRows, int boardCols, int wordSize)
     {
         std::vector<Candidate> result;
@@ -65,6 +67,7 @@ namespace WordSearch
 
     using CharFunctionPrototype = bool(Board&, int row, int col, char character);
 
+    // Call function for each row, col and char from word.
     template<class T>
     bool ApplyCharFunction(Board& board, const Candidate& position, const std::string& word, T function)
     {
@@ -136,6 +139,7 @@ namespace WordSearch
         return true;
     }
 
+    // Verify if it's possible to place word on position in board.
     bool VerifyWord(Board& board, const Candidate& position, const std::string& word)
     {
         return ApplyCharFunction(board, position, word, [](Board& board, int row, int col, char character)
@@ -144,6 +148,7 @@ namespace WordSearch
             });
     }
 
+    // Place word on position in board.
     void ApplyWord(Board& board, const Candidate& position, const std::string& word)
     {
         ApplyCharFunction(board, position, word, [](Board& board, int row, int col, char character)
@@ -154,7 +159,8 @@ namespace WordSearch
             });
     }
 
-    size_t CountWord(Board& board, const Candidate& position, const std::string& word)
+    // Count number of empty cells word will take on position in board.
+    size_t CountEmptyCells(Board& board, const Candidate& position, const std::string& word)
     {
         size_t count = 0;
 
@@ -166,6 +172,21 @@ namespace WordSearch
             });
 
         return count;
+    }
+
+    // Check if word is present on position in board.
+    bool CheckWord(Board& board, const Candidate& position, const std::string& word)
+    {
+        bool result = true;
+
+        ApplyCharFunction(board, position, word, [&result](Board& board, int row, int col, char character)
+            {
+                result = board[row][col] == character;
+
+                return result;
+            });
+
+        return result;
     }
 
     void PrintBoard(const Board& board)
@@ -196,13 +217,13 @@ namespace WordSearch
         return result;
     }
 
-    Candidates GetCandidates()
+    Candidates GetCandidates(size_t rows, size_t cols)
     {
         Candidates result;
 
         for (size_t i = Dictionary::MIN_WORD_SIZE; i < Dictionary::MAX_WORD_SIZE; ++i)
         {
-            result[i] = GenerateCandidates(BOARD_SIZE, BOARD_SIZE, i);
+            result[i] = GenerateCandidates(rows, cols, i);
             std::shuffle(std::begin(result[i]), std::end(result[i]), g_mt);
         }
 
@@ -357,13 +378,13 @@ namespace WordSearch
         removeItercepting((size_t)GetOpositeDirection(candidate.dir));
     }
 
-    std::tuple<Board, Words> PositionWords(Dictionary::Data& data, size_t wordCount, size_t wordSizeFrom, size_t wordSizeTo)
+    std::tuple<Board, Words> PositionWords(Dictionary::Data& data, size_t boardRows, size_t boardCols, size_t wordCount, size_t wordSizeFrom, size_t wordSizeTo)
     {
         std::uniform_int_distribution<size_t> randDirection(0, (size_t)Direction::COUNT - 1);
-        std::uniform_int_distribution<size_t> randWordSize(wordSizeFrom, std::min(BOARD_SIZE, wordSizeTo));
-        ProcessedCandidates candidates = ProcessCandidates(GetCandidates());
+        std::uniform_int_distribution<size_t> randWordSize(wordSizeFrom, std::min(std::max(boardRows, boardCols), wordSizeTo));
+        ProcessedCandidates candidates = ProcessCandidates(GetCandidates(boardRows, boardCols));
 
-        Board board{};
+        Board board(boardRows, std::vector<uint8_t>(boardCols, 0));
         Words words;
 
         size_t safetyCounter = 0;
@@ -371,13 +392,13 @@ namespace WordSearch
         {
             safetyCounter = 0;
             words.clear();
-            board = Board{};
-            candidates = ProcessCandidates(GetCandidates());
+            board = Board(boardRows, std::vector<uint8_t>(boardCols, 0));
+            candidates = ProcessCandidates(GetCandidates(boardRows, boardCols));
         };
 
         while (words.size() != wordCount)
         {
-            if (safetyCounter == 2000)
+            if (safetyCounter == SAFETY_COUNT)
                 resetProgress();
 
             auto word = Dictionary::GetRandomWord(data, randWordSize(g_mt));
@@ -388,7 +409,7 @@ namespace WordSearch
 
             for (auto it = std::begin(candidates[direction][word->size()]); it != std::end(candidates[direction][word->size()]); it++)
             {
-                if (VerifyWord(board, *it, *word) && CountWord(board, *it, *word) != 0)
+                if (VerifyWord(board, *it, *word) && CountEmptyCells(board, *it, *word) != 0)
                 {
                     ApplyWord(board, *it, *word);
 
@@ -408,16 +429,16 @@ namespace WordSearch
         return { board, words };
     }
 
-    Board PositionWords(std::vector<std::string>& words)
+    Board PositionWords(size_t boardRows, size_t boardCols, std::vector<std::string>& words)
     {
         std::uniform_int_distribution<size_t> randDirection(0, (size_t)Direction::COUNT - 1);
-        ProcessedCandidates candidates = ProcessCandidates(GetCandidates());
+        ProcessedCandidates candidates = ProcessCandidates(GetCandidates(boardRows, boardCols));
         std::array<Direction, (size_t)Direction::COUNT> dirs
         {
             Direction::Up, Direction::Down, Direction::Left, Direction::Right, Direction::UpLeft, Direction::UpRight, Direction::DownLeft, Direction::DownRight
         };
 
-        Board board{};
+        Board board( boardRows, std::vector<uint8_t>( boardCols, 0 ) );
 
         for (auto itWord = std::begin(words); itWord != std::end(words);)
         {
@@ -429,7 +450,7 @@ namespace WordSearch
             {
                 for (auto it = std::begin(candidates[(size_t)dir][itWord->size()]); it != std::end(candidates[(size_t)dir][itWord->size()]); it++)
                 {
-                    if (VerifyWord(board, *it, *itWord) && CountWord(board, *it, *itWord) != 0)
+                    if (VerifyWord(board, *it, *itWord) && CountEmptyCells(board, *it, *itWord) != 0)
                     {
                         ApplyWord(board, *it, *itWord);
 
