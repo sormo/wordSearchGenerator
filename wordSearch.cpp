@@ -15,7 +15,10 @@ namespace WordSearch
     std::random_device g_rd;
     std::mt19937 g_mt(g_rd());
 
+    // Number of times we will try to position random word on board before we fail.
     static constexpr size_t SAFETY_COUNT = 2000;
+    // How fast we will decrease word length lower bound with unsuccessful attempts.
+    static constexpr float WORD_SIZE_DECREMENT_FACTOR = 0.5f;
 
     std::vector<Candidate> GenerateCandidates(int boardRows, int boardCols, int wordSize)
     {
@@ -449,17 +452,25 @@ namespace WordSearch
         return true;
     }
 
-    bool PositionWordRandom(Dictionary::Data& data, Board& board, Words& words, ProcessedCandidates& candidates, Rand randWordSize, Rand randDir, const Candidates& checkCandidates)
+    // This is because we would like to position longer words first.
+    Rand GetRandWordSize(size_t from, size_t to, size_t safetyCount)
+    {
+        return Rand(std::max((int)from, (int)to - 1 - (int)(safetyCount * WORD_SIZE_DECREMENT_FACTOR)), to);
+    }
+
+    bool PositionWordRandom(Dictionary::Data& data, Board& board, Words& words, ProcessedCandidates& candidates, size_t wordSizeFrom, size_t wordSizeTo, Rand randDir, const Candidates& checkCandidates)
     {
         size_t safetyCounter = 0;
 
         while (safetyCounter < SAFETY_COUNT)
         {
             auto direction = randDir(g_mt);
-            auto word = Dictionary::GetRandomWord(data, randWordSize(g_mt));
+            auto word = Dictionary::GetRandomWord(data, GetRandWordSize(wordSizeFrom, wordSizeTo, safetyCounter)(g_mt));
 
             if (std::find(std::begin(words), std::end(words), *word) != std::end(words))
                 continue;
+
+            std::shuffle(std::begin(candidates[direction][word->size()]), std::end(candidates[direction][word->size()]), g_mt);
 
             for (auto it = std::begin(candidates[direction][word->size()]); it != std::end(candidates[direction][word->size()]); it++)
             {
@@ -486,7 +497,8 @@ namespace WordSearch
     {
         Rand randDirStraight(0, (size_t)Direction::Right);
         Rand randDirDiagonal((size_t)Direction::UpLeft, (size_t)Direction::DownRight);
-        Rand randWordSize(wordSizeFrom, std::min(std::max(boardRows, boardCols), wordSizeTo));
+
+        size_t maxWordSizeTo = std::min(std::max(boardRows, boardCols), wordSizeTo);
 
         ProcessedCandidates candidates = ProcessCandidates(GetCandidates(boardRows, boardCols));
         Candidates checkCandidates = GetCandidates(boardRows, boardCols);
@@ -499,10 +511,11 @@ namespace WordSearch
         // First is positioned with diagonal words.
         Rand currentRandDir = randDirDiagonal;
 
-        while (PositionWordRandom(data, board, words, candidates, randWordSize, currentRandDir, checkCandidates))
+        while (PositionWordRandom(data, board, words, candidates, wordSizeFrom, maxWordSizeTo, currentRandDir, checkCandidates))
         {
             freeCells = GetFreeCellsCount(board);
 
+            // After half of the cells are positioned we will switch to horizontal/vertical direction.
             if (freeCells < totalCells / 2)
                 currentRandDir = randDirStraight;
         }
